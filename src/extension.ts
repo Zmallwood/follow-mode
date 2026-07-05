@@ -3,7 +3,9 @@ import * as vscode from "vscode";
 let followEnabled = false;
 let isSyncing = false;
 let lastFollowDocumentUri: string | undefined;
-const ignoredScrollEditors = new WeakSet<vscode.TextEditor>();
+/** Ignore visible-range echo from programmatic revealRange (VS Code may emit several). */
+const ignoredScrollUntil = new WeakMap<vscode.TextEditor, number>();
+const IGNORE_PROGRAMMATIC_SCROLL_MS = 200;
 
 /** Suppress scroll sync briefly after edits; content changes also update visible ranges. */
 const editScrollSuppression = new Map<
@@ -28,14 +30,18 @@ function isEditInducedVisibleRangeChange(editor: vscode.TextEditor): boolean {
 }
 
 function markIgnoredScroll(editor: vscode.TextEditor): void {
-  ignoredScrollEditors.add(editor);
+  ignoredScrollUntil.set(editor, Date.now() + IGNORE_PROGRAMMATIC_SCROLL_MS);
 }
 
 function isIgnoredScroll(editor: vscode.TextEditor): boolean {
-  if (!ignoredScrollEditors.has(editor)) {
+  const until = ignoredScrollUntil.get(editor);
+  if (until === undefined) {
     return false;
   }
-  ignoredScrollEditors.delete(editor);
+  if (Date.now() >= until) {
+    ignoredScrollUntil.delete(editor);
+    return false;
+  }
   return true;
 }
 
@@ -200,12 +206,8 @@ async function setupFollowLayout(leader: vscode.TextEditor | undefined): Promise
     await ensureFollowerPane(leader);
     if (isNewFile) {
       markIgnoredScroll(leader);
-      for (const editor of followers(leader)) {
-        markIgnoredScroll(editor);
-      }
-    } else {
-      syncScrollWithOffset(leader);
     }
+    syncScrollWithOffset(leader);
   } finally {
     isSyncing = false;
   }
