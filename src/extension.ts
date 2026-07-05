@@ -198,7 +198,14 @@ async function setupFollowLayout(leader: vscode.TextEditor | undefined): Promise
       lastFollowDocumentUri = documentUri;
     }
     await ensureFollowerPane(leader);
-    syncScrollWithOffset(leader);
+    if (isNewFile) {
+      markIgnoredScroll(leader);
+      for (const editor of followers(leader)) {
+        markIgnoredScroll(editor);
+      }
+    } else {
+      syncScrollWithOffset(leader);
+    }
   } finally {
     isSyncing = false;
   }
